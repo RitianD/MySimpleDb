@@ -61,16 +61,31 @@ def test_prints_error_message_if_strings_too_long():
     ]
     result = run_script(script)
     expected_output = [
-        f"db >String is too long.",
+        "db >String is too long.",
         "db >Executed.",
         "db >"
     ]
     assert result == expected_output
     print("test4 pass")
 
+def test_negative_id_error_message():
+    script = [
+        "insert -1 cstack foo@bar.com",
+        "select",
+        ".exit"
+    ]
+    result = run_script(script)
+    expected_output = [
+        "db >ID must be positive.",
+        "db >Executed.",
+        "db >"
+    ]
+    assert result == expected_output
+    print("test5 pass")
 
 if __name__ == "__main__":
     test_insert_and_retrieve_row()
     test_prints_error_message_when_table_is_full()
     test_long_strings()
     test_prints_error_message_if_strings_too_long()
+    test_negative_id_error_message()
