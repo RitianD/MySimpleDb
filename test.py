@@ -1,8 +1,10 @@
 import subprocess
+import os
 
 def run_script(commands):
+    
     raw_output = None
-    with subprocess.Popen(["./main"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True) as process:
+    with subprocess.Popen(["./main","test.db"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True) as process:
         for command in commands:
             process.stdin.write(command + '\n')
         process.stdin.close()
@@ -83,9 +85,39 @@ def test_negative_id_error_message():
     assert result == expected_output
     print("test5 pass")
 
+def test_keeps_data_after_closing_connection():
+    result1 = run_script([
+        "insert 1 user1 person1@example.com",
+        ".exit",
+    ])
+    expected_output1 = [
+        "db >Executed.",
+        "db >",
+    ]
+    assert result1 == expected_output1
+    result2 = run_script([
+        "select",
+        ".exit",
+    ])
+    expected_output2 = [
+        "db >(1, user1, person1@example.com)",
+        "Executed.",
+        "db >",
+    ]
+    assert result2 == expected_output2
+    print("test6 pass")
+
 if __name__ == "__main__":
+    os.system("rm -rf test.db")
     test_insert_and_retrieve_row()
+    os.system("rm -rf test.db")
     test_prints_error_message_when_table_is_full()
+    os.system("rm -rf test.db")
+    #还没有置换内存的策略，内存一满，会读不到应读到的数据;目前内存只有4096*100,超出部分失效，无法正常写入数据；
     test_long_strings()
+    os.system("rm -rf test.db")
     test_prints_error_message_if_strings_too_long()
+    os.system("rm -rf test.db")
     test_negative_id_error_message()
+    os.system("rm -rf test.db")
+    test_keeps_data_after_closing_connection()
