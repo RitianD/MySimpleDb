@@ -124,10 +124,10 @@ class TestMyCode(unittest.TestCase):
             "db >Executed.",
             "db >Executed.",
             "db >Tree:",
-            "leaf (size 3)",
-            " - 0 : 3",
-            " - 1 : 1",
-            " - 2 : 2",
+            "- leaf (size 3)",
+            "  - 1",
+            "  - 2",
+            "  - 3",
             "db >",
         ]
         self.assertEqual(result, expected_output)
@@ -151,6 +151,61 @@ class TestMyCode(unittest.TestCase):
         ]
         self.assertEqual(result, expected_output)
         print("test_print_constants pass")
+    
+    def test_duplicate_id_error(self):
+        commands = [
+            "insert 1 user1 person1@example.com",
+            "insert 1 user1 person1@example.com",
+            "select",
+            ".exit",
+        ]
+        result = self.run_script(commands)
+        expected_ouput = [
+            "db >Executed.",
+            "db >Error: Duplicate key.",
+            "db >(1, user1, person1@example.com)",
+            "Executed.",
+            "db >",
+        ]
+        print(result)
+        self.assertEqual(result, expected_ouput)
+        print("test_duplicate_id_error pass")
+
+    def test_print_btree_3_leaf_nodes(self):
+        commands = []
+        for i in range(1, 15):
+            commands.append("insert {} user{} person{}@example.com".format(i, i, i))
+        commands.append(".btree")
+        commands.append("insert 15 user15 person15@example.com")
+        commands.append(".exit")
+        
+        result = self.run_script(commands)
+        
+        expected_output = [
+            "db >Tree:",
+            "- internal (size 1)",
+            "  - leaf (size 7)",
+            "    - 1",
+            "    - 2",
+            "    - 3",
+            "    - 4",
+            "    - 5",
+            "    - 6",
+            "    - 7",
+            "  - key 7",
+            "  - leaf (size 7)",
+            "    - 8",
+            "    - 9",
+            "    - 10",
+            "    - 11",
+            "    - 12",
+            "    - 13",
+            "    - 14",
+            "db > Need to implement searching an internal node",
+        ]
+        
+        self.assertEqual(result[14:], expected_output)
+        print("test_print_btree_3_leaf_nodes pass")
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,9 +7,12 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+void set_node_root(void* node, bool is_root);
+
 typedef enum{
 	EXECUTE_SUCCESS,
-	EXECUTE_TABLE_FULL
+	EXECUTE_TABLE_FULL,
+    EXECUTE_DUPLICATE_KEY
 } ExecuteResult;
 
 typedef enum{
@@ -134,7 +137,37 @@ const uint32_t LEAF_NODE_VALUE_OFFSET = LEAF_NODE_KEY_OFFSET + LEAF_NODE_KEY_SIZ
 const uint32_t LEAF_NODE_CELL_SIZE = LEAF_NODE_KEY_SIZE + LEAF_NODE_VALUE_SIZE;
 const uint32_t LEAF_NODE_SPACE_FOR_CELLS = PAGE_SIZE - LEAF_NODE_HEADER_SIZE;
 const uint32_t LEAF_NODE_MAX_CELLS = LEAF_NODE_SPACE_FOR_CELLS / LEAF_NODE_CELL_SIZE;
+const uint32_t LEAF_NODE_RIGHT_SPLIT_COUNT = (LEAF_NODE_MAX_CELLS + 1) / 2;
+const uint32_t LEAF_NODE_LEFT_SPLIT_COUNT = (LEAF_NODE_MAX_CELLS + 1) - LEAF_NODE_RIGHT_SPLIT_COUNT; 
 
+//Internal Node Layout
+/*
+   byte 0    |   byte 1   |   bytes 2-5          |   bytes 6-9        |
+  node_type  |  is_root   |  parent_pointer      |    num keys        |
+        bytes 6-9         |   bytes 10-13        |   bytes 14-17      |
+          num keys        |  right child pointer |   child pointer 0  |
+        bytes 14-17       |   bytes 18-21        |   bytes 22-25      |
+          child pointer 0 |      key 0           |   child pointer 1  |
+        bytes 22-25       |   bytes 26-29        |    .........       |
+          child pointer 1 |      key 1           |    .........       |
+          ............................           |   bytes 4086-4089  |
+          ............................           |   child pointer 509|
+        bytes 4086-4089   |   bytes 4090-4093    |   bytes 4094-4095  |
+        child pointer 509 |      key 509         |     wasted space   |
+
+*/ 
+
+//Internal Node Header Layout
+const uint32_t INTERNAL_NODE_NUM_KEYS_SIZE = sizeof(uint32_t);
+const uint32_t INTERNAL_NODE_NUM_KEYS_OFFSET = COMMON_NODE_HEADER_SIZE;
+const uint32_t INTERNAL_NODE_RIGHT_CHILD_SIZE = sizeof(uint32_t);
+const uint32_t INTERNAL_NODE_RIGHT_CHILD_OFFSET = INTERNAL_NODE_NUM_KEYS_OFFSET + INTERNAL_NODE_NUM_KEYS_SIZE;
+const uint32_t INTERNAL_NODE_HEADER_SIZE = COMMON_NODE_HEADER_SIZE + INTERNAL_NODE_NUM_KEYS_SIZE + INTERNAL_NODE_RIGHT_CHILD_SIZE;
+
+//Internal Node Body Layout
+const uint32_t INTERNAL_NODE_KEY_SIZE = sizeof(uint32_t);
+const uint32_t INTERNAL_NODE_CHILD_SIZE = sizeof(uint32_t);
+const uint32_t INTERNAL_NODE_CELL_SIZE = INTERNAL_NODE_CHILD_SIZE + INTERNAL_NODE_KEY_SIZE;
 
 //类型强转应该不会出问题吧？观望一下
 uint32_t* leaf_node_num_cells(void* node){
@@ -153,7 +186,19 @@ void* leaf_node_value(void* node, uint32_t cell_num){
     return leaf_node_cell(node, cell_num) + LEAF_NODE_KEY_SIZE;
 }
 
+NodeType get_node_type(void* node){
+    uint8_t value = *((uint8_t*)node + NODE_TYPE_OFFSET);
+    return (NodeType)value;
+}
+
+void set_node_type(void* node, NodeType type){
+    uint8_t value = type;
+    *((uint8_t*)(node + NODE_TYPE_OFFSET)) = value;
+}
+
 void initialize_leaf_node(void* node){
+    set_node_type(node, NODE_LEAF);
+    set_node_root(node, false);
     *(leaf_node_num_cells(node)) = 0;
 }
 
@@ -166,11 +211,65 @@ void print_constants(){
     printf("LEAF_NODE_MAX_CELLS:%d\n", LEAF_NODE_MAX_CELLS);
 }
 
-void print_leaf_node(void* node){
-    uint32_t num_cells = *leaf_node_num_cells(node);
-    printf("leaf (size %d)\n", num_cells);
-    for(uint32_t i = 0;i < num_cells;++i){
-        uint32_t key = *leaf_node_key(node,i);
-        printf(" - %d : %d\n", i, key);
+// void print_leaf_node(void* node){
+//     uint32_t num_cells = *leaf_node_num_cells(node);
+//     printf("leaf (size %d)\n", num_cells);
+//     for(uint32_t i = 0;i < num_cells;++i){
+//         uint32_t key = *leaf_node_key(node,i);
+//         printf(" - %d : %d\n", i, key);
+//     }
+// }
+
+//Internal node operations:
+uint32_t* internal_node_num_keys(void* node){
+    return (uint32_t*)(node + INTERNAL_NODE_NUM_KEYS_OFFSET);
+}
+
+uint32_t* internal_node_right_child(void* node){
+    return (uint32_t*)(node + INTERNAL_NODE_RIGHT_CHILD_OFFSET);
+}
+
+uint32_t* internal_node_cell(void* node, uint32_t cell_num){
+    return (uint32_t*)(node + INTERNAL_NODE_HEADER_SIZE + cell_num*INTERNAL_NODE_CELL_SIZE);
+}
+
+uint32_t* internal_node_child(void* node, uint32_t child_num){
+    uint32_t num_keys = *internal_node_num_keys(node);
+    if(child_num > num_keys){
+        printf("Tried to access child_num %d > num_keys %d\n", child_num, num_keys);
+        exit(EXIT_FAILURE);
+    }else if(child_num == num_keys){
+        return internal_node_right_child(node);
+    }else{
+        return internal_node_cell(node, child_num);
+    }   
+}
+
+uint32_t* internal_node_key(void* node, uint32_t key_num){
+    return internal_node_cell(node, key_num) + INTERNAL_NODE_CHILD_SIZE;
+}
+
+uint32_t get_node_max_key(void* node){
+    switch(get_node_type(node)){
+        case NODE_INTERNAL:
+            return *internal_node_key(node, *internal_node_num_keys(node) - 1);
+        case NODE_LEAF:
+            return *leaf_node_key(node, *leaf_node_num_cells(node) - 1);        
     }
+}
+
+bool is_node_root(void* node){
+    uint8_t value = *((uint8_t*)(node + IS_ROOT_OFFSET));
+    return (bool)value;
+}
+
+void set_node_root(void* node, bool is_root){
+    uint8_t value = is_root;
+    *((uint8_t*)(node + IS_ROOT_OFFSET)) = value;
+}
+
+void initialize_internal_node(void* node){
+    set_node_type(node, NODE_INTERNAL);
+    set_node_root(node, false);
+    *internal_node_num_keys(node) = 0;
 }
