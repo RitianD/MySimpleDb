@@ -28,4 +28,3 @@ a simple database written in c
 | 删除时间复杂度 | O(n)                  | O(log(n))       |
 | 查询时间复杂度 | O(n)                  | O(log(n))       |
 
-遇到的的BUG： 测试时发现插入超过13个节点，就会报段错误（核心已转储）；待排查，先吃饭去，妈个鸡的
