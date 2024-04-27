@@ -83,13 +83,13 @@ void create_new_root(Table* table, uint32_t right_child_page_num){
 }
 
 
-void leaf_node_split_and_insert(Cursor* cursor, uint32_t, Row* value){
+void leaf_node_split_and_insert(Cursor* cursor, uint32_t key, Row* value){
 	void* old_node = get_page(cursor->table->pager, cursor->page_num);
 	uint32_t new_page_num = get_unused_page_num(cursor->table->pager);
 	void* new_node = get_page(cursor->table->pager, new_page_num);
 	initialize_leaf_node(new_node);
 
-	for(uint32_t i = LEAF_NODE_MAX_CELLS; i>=0; i--){
+	for(int32_t i = LEAF_NODE_MAX_CELLS; i>=0; i--){
 		void* destination_node;
 		if(i >= LEAF_NODE_LEFT_SPLIT_COUNT){
 			destination_node = new_node;
@@ -99,7 +99,7 @@ void leaf_node_split_and_insert(Cursor* cursor, uint32_t, Row* value){
 
 		uint32_t index_within_node = i % LEAF_NODE_LEFT_SPLIT_COUNT;
 		void* destination = leaf_node_cell(destination_node, index_within_node);
-
+		//printf("split and insert i:%u, cell_num:%u\n", i, cursor->cell_num);
 		if(i == cursor->cell_num){
 			serialize_row(value, destination);
 		}else if(i > cursor->cell_num){
@@ -139,7 +139,7 @@ Cursor* table_find(Table* table, uint32_t key){
 	if(get_node_type(root_node) == NODE_LEAF){
 		return leaf_node_find(table, root_page_num, key);
 	}else{
-		printf("Need to implement searching an internal node\n");
+		printf("Need to implement searching an internal node");
 		exit(EXIT_FAILURE);
 	}
 }
@@ -449,15 +449,10 @@ PrepareResult prepare_statement(InputBuffer* input_buffer, Statement* statement)
 
 ExecuteResult execute_insert(Statement* statement, Table* table){
 	void* node = get_page(table->pager, table->root_page_num);
-	// if((*leaf_node_num_cells(node) >= LEAF_NODE_MAX_CELLS)){
-	// 	return EXECUTE_TABLE_FULL;
-	// }
+
 	uint32_t num_cells = (*leaf_node_num_cells(node));
-	// if(num_cells >= LEAF_NODE_MAX_CELLS){
-	// 	return EXECUTE_TABLE_FULL;
-	// }
+
 	Row* row_to_insert = &(statement->row_to_insert);
-	//Cursor* cursor = table_end(table);
 	uint32_t key_to_insert = row_to_insert->id;
 	Cursor* cursor = table_find(table, key_to_insert);
 
@@ -467,8 +462,7 @@ ExecuteResult execute_insert(Statement* statement, Table* table){
 			return EXECUTE_DUPLICATE_KEY;
 		}
 	}
-	// serialize_row(row_to_insert, cursor_value(cursor));
-	// table->num_rows += 1;
+
 	leaf_node_insert(cursor, row_to_insert->id, row_to_insert);
 
 	free(cursor);
